@@ -5,6 +5,7 @@ class Receipt {
   final String date;
   final String category;
   final String? imagePath;
+  final String currency;
 
   Receipt({
     this.id,
@@ -13,6 +14,7 @@ class Receipt {
     required this.date,
     required this.category,
     this.imagePath,
+    this.currency = 'RON',
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +25,7 @@ class Receipt {
       'date': date,
       'category': category,
       'imagePath': imagePath,
+      'currency': currency,
     };
   }
 
@@ -34,6 +37,7 @@ class Receipt {
       date: map['date'],
       category: map['category'],
       imagePath: map['imagePath'],
+      currency: map['currency'] ?? 'RON',
     );
   }
 }

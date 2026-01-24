@@ -7,7 +7,10 @@ plugins {
 
 android {
     namespace = "com.example.smart_receipt"
-    compileSdk = flutter.compileSdkVersion
+    
+    // UPDATE: Set to 34 to match targetSdk
+    compileSdk = 36
+    
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -22,10 +25,13 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.smart_receipt"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        
+        // UPDATE: Required by Google ML Kit (OCR)
+        minSdk = flutter.minSdkVersion 
+        
+        // UPDATE: Standard for modern Android apps (Android 14)
+        targetSdk = 36
+        
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

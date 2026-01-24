@@ -1,7 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../data/database_helper.dart';
 import '../../models/receipt_model.dart';
+import '../../services/ocr_service.dart';
+import '../../services/sassy_coach_service.dart';
 
 class AddReceiptScreen extends StatefulWidget {
   const AddReceiptScreen({super.key});
@@ -11,20 +15,77 @@ class AddReceiptScreen extends StatefulWidget {
 }
 
 class _AddReceiptScreenState extends State<AddReceiptScreen> {
+  // Services
+  final _ocrService = OcrService();
+  final _coachService = SassyCoachService();
+  final _picker = ImagePicker();
+
+  // Controllers & State
   final _storeController = TextEditingController();
   final _amountController = TextEditingController();
   String _selectedCategory = 'Food & Drink';
-  DateTime _selectedDate = DateTime.now();
+  final DateTime _selectedDate = DateTime.now();
   
+  File? _image;
+  String? _roastMessage; 
+  bool _isScanning = false;
+
   final List<String> _categories = [
-    'Food & Drink',
-    'Groceries',
-    'Transport',
-    'Electronics',
-    'Bills',
-    'Shopping',
-    'Other'
+    'Food & Drink', 'Groceries', 'Transport', 'Electronics',
+    'Bills', 'Shopping', 'Other'
   ];
+
+  @override
+  void dispose() {
+    _ocrService.dispose();
+    _storeController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  // --- Logic: Pick Image, OCR, and Roast ---
+  Future<void> _pickAndAnalyzeImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera);
+      
+      if (pickedFile != null) {
+        setState(() {
+          _image = File(pickedFile.path);
+          _isScanning = true;
+          _roastMessage = null; // Clear old roast
+        });
+
+        // 1. Run OCR
+        final text = await _ocrService.scanReceipt(pickedFile.path);
+        
+        // 2. Simple Auto-fill Attempt (Regex to find the biggest price)
+        final priceRegex = RegExp(r'(\d+[.,]\d{2})');
+        final matches = priceRegex.allMatches(text);
+        if (matches.isNotEmpty) {
+           // Takes the last price found, often the total
+           String probablePrice = matches.last.group(0)!.replaceAll(',', '.');
+           _amountController.text = probablePrice;
+        }
+
+        // 3. Trigger the Roast
+        final roast = await _coachService.sendMessage(text);
+
+        if (mounted) {
+          setState(() {
+            _roastMessage = roast;
+            _isScanning = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _roastMessage = "Even the AI is speechless (Error: $e)";
+        });
+      }
+    }
+  }
 
   Future<void> _saveReceipt() async {
     if (_storeController.text.isEmpty || _amountController.text.isEmpty) {
@@ -37,15 +98,17 @@ class _AddReceiptScreenState extends State<AddReceiptScreen> {
       amount: double.tryParse(_amountController.text) ?? 0.0,
       date: DateFormat('yyyy-MM-dd').format(_selectedDate),
       category: _selectedCategory,
+      currency: 'RON',
     );
 
     await DatabaseHelper.instance.addReceipt(newReceipt);
 
     if (mounted) {
-      Navigator.pop(context, true); // Return "true" to indicate refresh needed
+      Navigator.pop(context, true);
     }
   }
 
+  // --- UI Construction ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,26 +122,66 @@ class _AddReceiptScreenState extends State<AddReceiptScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // Placeholder for Camera View
-            Container(
-              height: 150,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white10,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.camera_alt, size: 40, color: Colors.white54),
-                  SizedBox(height: 10),
-                  Text("Tap to Scan Receipt", style: TextStyle(color: Colors.white54)),
-                ],
+            // 1. Camera / Image Area
+            GestureDetector(
+              onTap: _isScanning ? null : _pickAndAnalyzeImage,
+              child: Container(
+                height: 200, 
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.white24),
+                  image: _image != null 
+                    ? DecorationImage(image: FileImage(_image!), fit: BoxFit.cover, opacity: 0.5)
+                    : null
+                ),
+                child: _isScanning 
+                  ? const Center(child: CircularProgressIndicator(color: Colors.deepPurpleAccent))
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_image == null ? Icons.camera_alt : Icons.refresh, size: 40, color: Colors.white54),
+                        const SizedBox(height: 10),
+                        Text(
+                          _image == null ? "Tap to Scan Receipt" : "Tap to Retake", 
+                          style: const TextStyle(color: Colors.white54)
+                        ),
+                      ],
+                    ),
               ),
             ),
-            const SizedBox(height: 30),
             
+            // 2. The Roast Card (Appears after scan)
+            if (_roastMessage != null) ...[
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.withOpacity(0.2), Colors.orange.withOpacity(0.1)],
+                  ),
+                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    const Text("🔥 FINANCIAL REALITY CHECK 🔥", 
+                      style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _roastMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontStyle: FontStyle.italic, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 30),
             const Text("Verify Details", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
 
@@ -97,6 +200,7 @@ class _AddReceiptScreenState extends State<AddReceiptScreen> {
                   dropdownColor: const Color(0xFF2E004B),
                   style: const TextStyle(color: Colors.white),
                   isExpanded: true,
+                  icon: const Icon(Icons.arrow_drop_down, color: Colors.deepPurpleAccent),
                   items: _categories.map((String category) {
                     return DropdownMenuItem<String>(
                       value: category,

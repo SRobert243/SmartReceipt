@@ -21,7 +21,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path, 
-      version: 2, // Incremented version to trigger onUpgrade
+      version: 3, 
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -44,7 +44,8 @@ class DatabaseHelper {
       amount REAL NOT NULL,
       date TEXT NOT NULL,
       category TEXT NOT NULL,
-      imagePath TEXT
+      imagePath TEXT,
+      currency TEXT DEFAULT 'RON'
     )
     ''';
 
@@ -52,7 +53,6 @@ class DatabaseHelper {
     await db.execute(receiptTable);
   }
 
-  // Handle database upgrades (if user already has the app installed)
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
@@ -62,13 +62,44 @@ class DatabaseHelper {
         amount REAL NOT NULL,
         date TEXT NOT NULL,
         category TEXT NOT NULL,
-        imagePath TEXT
+        imagePath TEXT,
+        currency TEXT DEFAULT 'RON'
       )
       ''');
     }
+    if (oldVersion < 3) {
+      // Add currency column to existing receipts table
+      try {
+        await db.execute('ALTER TABLE receipts ADD COLUMN currency TEXT DEFAULT "RON"');
+      } catch (e) {
+        // Column already exists
+      }
+    }
   }
 
-  // --- USER METHODS ---
+  // --- USER METHODS (MODIFICATE PENTRU NOUL FLUX) ---
+
+  // 1. Funcție nouă: Verifică dacă există deja un utilizator (pentru auto-login)
+  Future<User?> getCurrentUser() async {
+    final db = await instance.database;
+    // Returnăm primul utilizator găsit. Deoarece nu mai avem login, presupunem că e un singur user pe telefon.
+    final maps = await db.query('users', limit: 1);
+    
+    if (maps.isNotEmpty) {
+      return User.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  // 2. Funcție nouă: Șterge tot (pentru butonul de Reset/Logout)
+  Future<void> logoutAndClear() async {
+    final db = await instance.database;
+    // Ștergem utilizatorul
+    await db.delete('users');
+    // Ștergem și chitanțele (pentru a reseta complet aplicația)
+    await db.delete('receipts');
+  }
+
   Future<int> registerUser(User user) async {
     final db = await instance.database;
     try {
@@ -78,6 +109,7 @@ class DatabaseHelper {
     }
   }
 
+  // (Păstrăm loginUser doar pentru compatibilitate, deși nu îl mai folosim direct în UI)
   Future<User?> loginUser(String email, String password) async {
     final db = await instance.database;
     final maps = await db.query(

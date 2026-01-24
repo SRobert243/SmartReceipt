@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../models/user_model.dart';
-import '../../models/receipt_model.dart';
-import '../../data/database_helper.dart';
-import '../../main.dart';
-import '../screens/add_receipt_screen.dart';
-import '../screens/statistics_screen.dart';
+import 'package:smart_receipt/models/user_model.dart';
+import 'package:smart_receipt/models/receipt_model.dart';
+import 'package:smart_receipt/data/database_helper.dart';
+import 'package:smart_receipt/screens/add_receipt_screen.dart';
+import 'package:smart_receipt/screens/welcome_screen.dart'; 
+import 'package:smart_receipt/screens/statistics_screen.dart';
+import 'package:smart_receipt/screens/sassy_chat_screen.dart'; // ✅ IMPORT THE CHAT SCREEN
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -17,16 +18,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   double _totalSpent = 0.0;
   List<Receipt> _recentReceipts = [];
-  
-  // Default currency
   String _selectedCurrency = 'USD';
 
-  // Approximate Exchange Rates (Base: USD)
-  // You can update these with real API data in the future
   final Map<String, double> _exchangeRates = {
     'USD': 1.00,
-    'EUR': 0.95, // 1 USD = 0.95 Euro
-    'RON': 4.78, // 1 USD = 4.78 Lei
+    'EUR': 0.95, 
+    'RON': 4.78, 
   };
 
   @override
@@ -41,12 +38,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() {
         _totalSpent = total;
-        _recentReceipts = receipts.take(5).toList(); // Show top 5
+        _recentReceipts = receipts.take(5).toList(); 
       });
     }
   }
 
-  // Helper to get the correct symbol
   String get _currencySymbol {
     switch (_selectedCurrency) {
       case 'EUR': return '€';
@@ -55,10 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Helper to convert amounts for display
   String _formatAmount(double amount) {
     double converted = amount * (_exchangeRates[_selectedCurrency] ?? 1.0);
-    return "${_currencySymbol}${converted.toStringAsFixed(2)}";
+    return "$_currencySymbol${converted.toStringAsFixed(2)}";
   }
 
   @override
@@ -106,19 +101,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedCurrency = newValue;
-                    });
-                  }
+                  if (newValue != null) setState(() => _selectedCurrency = newValue);
                 },
               ),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+            tooltip: "Reset App",
+            onPressed: () async {
+               // 1. Delete data
+               await DatabaseHelper.instance.logoutAndClear();
+               if (context.mounted) {
+                 // 2. Go to Welcome Screen
+                 Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const WelcomeScreen()), (route) => false);
+               }
             },
           ),
         ],
@@ -147,7 +144,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         const Text("Total Spent", style: TextStyle(color: Colors.white70, fontSize: 14)),
                         const SizedBox(height: 8),
-                        // Use the format helper here
                         Text(_formatAmount(_totalSpent), style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
                       ],
                     ),
@@ -155,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Buttons
+                  // Buttons Row
                   Row(
                     children: [
                       Expanded(
@@ -164,9 +160,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: "Scan Receipt", 
                           color: Colors.blueAccent,
                           onTap: () async {
-                            // Navigate to Add Receipt and wait for result
                             final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddReceiptScreen()));
-                            if (result == true) _loadData(); // Refresh if new receipt added
+                            if (result == true) _loadData(); 
                           },
                         ),
                       ),
@@ -182,6 +177,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ✅ SASSY COACH BUTTON - CONNECTED CORRECTLY
+                  _ActionButton(
+                    icon: Icons.smart_toy_outlined, 
+                    label: "Chat with Sassy Coach", 
+                    color: Colors.pinkAccent,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const SassyChatScreen()));
+                    },
                   ),
 
                   const SizedBox(height: 30),
@@ -205,7 +212,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           return TransactionTile(
                             store: receipt.storeName, 
                             category: receipt.category, 
-                            // Use the format helper here
                             amount: "-${_formatAmount(receipt.amount)}", 
                             date: receipt.date,
                             icon: Icons.receipt
@@ -237,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// Reuse Helper Widgets
+// Helpers
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
